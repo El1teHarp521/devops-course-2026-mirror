@@ -27,5 +27,17 @@ check "Входящий трафик по умолчанию deny" "deny" "$(sud
 echo "[3] Учётные записи"
 awk -F: '$3>=1000 && $3<65534 {printf "  %s (uid=%s)\n",$1,$3}' /etc/passwd
 
+echo "[4] Веб-сервер"
+check "Служба Nginx активна" "active" "$(systemctl is-active nginx)"
+check "Конфигурация Nginx корректна" "0" "$(sudo nginx -t >/dev/null 2>&1; echo $?)"
+check "Сертификат валиден более 30 дней" "0" "$(openssl x509 -checkend 2592000 -noout -in /etc/ssl/certs/devops.crt >/dev/null 2>&1; echo $?)"
+check "Нет файлов с записью для всех и ключ 600" "0:600" "$(find /var/www/devops-site -perm -o+w | wc -l):$(sudo stat -c '%a' /etc/ssl/private/devops.key)"
+
+echo "[5] Контейнеризация"
+check "Служба docker активна" "active" "$(systemctl is-active docker)"
+check "Контейнер СУБД в состоянии healthy" "healthy" "$(docker inspect -f '{{.State.Health.Status}}' app-db-1 2>/dev/null || echo 'not found')"
+check "Порт 5000 открыт только на 127.0.0.1, а 5432 закрыт" "127.0.0.1:5000" "$(ss -tln | awk '{print $4}' | grep -E ':(5000|5432)$' | tr -d '\n')"
+check "Права файла .env равны 600" "600" "$(stat -c '%a' "${HOME}/app/.env" 2>/dev/null || echo '0')"
+
 echo "Пройдено: $PASS, не пройдено: $FAIL"
 [[ $FAIL -eq 0 ]] && exit 0 || exit 1
